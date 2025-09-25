@@ -1,22 +1,32 @@
+// backend/routes/requestRoutes.js
 import express from "express";
+import auth from "../middleware/auth.js";
+import upload from "../middleware/upload.js"; // your multer instance
 import {
   createRequest,
-  getRequests,
-  getRequestById,
-  updateRequest,
+  listRequests,
+  getRequest,
+  getMyRequests,
+  reportRequest,
   deleteRequest,
-  voteRequest,
+  getMyReportedFeatures
 } from "../controllers/requestController.js";
-import { upload } from "../middleware/upload.js";
 
 const router = express.Router();
 
-// multipart form: up to 5 files (change limit as needed)
-router.post("/", upload.array("attachments", 5), createRequest);
-router.get("/", getRequests);
-router.get("/:id", getRequestById);
-router.put("/:id", upload.array("attachments", 5), updateRequest);
-router.delete("/:id", deleteRequest);
-router.post("/:id/vote", voteRequest);
+// Accept attachments on create
+router.post("/", auth, upload.array("attachments", 5), createRequest);
+
+// list & single
+router.get("/", listRequests);
+router.get("/mine", auth, getMyRequests);
+router.get("/reported", auth, getMyReportedFeatures); // features current user reported
+router.get("/:id", getRequest);
+
+// report a request
+router.post("/:id/report", auth, reportRequest);
+
+// delete (soft)
+router.delete("/:id", auth, deleteRequest);
 
 export default router;

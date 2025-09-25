@@ -1,21 +1,28 @@
 // backend/routes/commentRoutes.js
 import express from "express";
-import { createComment, getCommentsForFeature, deleteComment, reportComment } from "../controllers/commentController.js";
-import { upload } from "../middleware/upload.js";
 import auth from "../middleware/auth.js";
+import upload from "../middleware/upload.js";
+import {
+  createComment,
+  reportComment,
+  deleteComment,
+  getMyReportedComments
+} from "../controllers/commentController.js";
 
 const router = express.Router();
 
-// create comment or reply (multipart for attachments)
-router.post("/requests/:id/comments", auth, upload.array("attachments", 4), createComment);
+// POST comment (or reply) on a feature request
+// path: POST /api/requests/:id/comments
+router.post("/requests/:id/comments", auth, upload.array("attachments", 5), createComment);
 
-// list comments for a feature
-router.get("/requests/:id/comments", getCommentsForFeature);
+// report a comment
+// path: POST /api/comments/:commentId/report
+router.post("/comments/:commentId/report", auth, reportComment);
 
-// delete comment
-router.delete("/comments/:id", auth, deleteComment);
+// delete a comment (soft)
+router.delete("/comments/:commentId", auth, deleteComment);
 
-// report comment
-router.post("/comments/:id/report", auth, reportComment);
+// get comments user reported
+router.get("/comments/reported/me", auth, getMyReportedComments);
 
 export default router;

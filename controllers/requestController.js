@@ -1,109 +1,141 @@
+// backend/controllers/requestController.js
 import FeatureRequest from "../models/FeatureRequest.js";
-import path from "path";
+
+const buildAttachments = (files = []) =>
+  files.map(f => ({
+    filename: f.filename,
+    originalName: f.originalname,
+    mimetype: f.mimetype,
+    size: f.size,
+    url: `/uploads/${f.filename}`
+  }));
 
 export const createRequest = async (req, res, next) => {
   try {
-    const { title, description = "", type = "feature", board = "General" } = req.body;
-    if (!title || title.trim().length === 0) {
-      return res.status(400).json({ message: "Title is required" });
-    }
+    const { title, description, type, board } = req.body;
+    if (!title) return res.status(400).json({ message: "title is required" });
 
-    const attachments = (req.files || []).map((f) => ({
-      filename: f.filename,
-      originalName: f.originalname,
-      mimetype: f.mimetype,
-      size: f.size,
-      url: `${req.protocol}://${req.get("host")}/uploads/${f.filename}`,
-    }));
+    const authorId = req.user?.id || req.headers["x-user-id"] || "anonymous";
+    const authorName = req.user?.name || req.headers["x-user-name"] || "anonymous";
 
-    const doc = new FeatureRequest({
-      title: title.trim(),
+    const attachments = buildAttachments(req.files);
+
+    const doc = await FeatureRequest.create({
+      title,
       description,
       type,
       board,
       attachments,
+      authorId,
+      authorName
+    });
+
+    return res.status(201).json(doc);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const listRequests = async (req, res, next) => {
+  try {
+    const q = { isDeleted: false };
+    // support optional filtering by type/board via query strings if needed
+    if (req.query.type) q.type = req.query.type;
+    if (req.query.board) q.board = req.query.board;
+    const data = await FeatureRequest.find(q).sort({ createdAt: -1 });
+    return res.json(data);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const getRequest = async (req, res, next) => {
+  try {
+    const doc = await FeatureRequest.findById(req.params.id);
+    if (!doc || doc.isDeleted) return res.status(404).json({ message: "Not found" });
+    return res.json(doc);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const getMyRequests = async (req, res, next) => {
+  try {
+    const id = req.user?.id || req.headers["x-user-id"];
+    if (!id) return res.status(401).json({ message: "user header required" });
+    const data = await FeatureRequest.find({ authorId: id, isDeleted: false }).sort({ createdAt: -1 });
+    return res.json(data);
+  } catch (err) {
+    return next(err);
+  }
+};
+
+export const reportRequest = async (req, res, next) => {
+  try {
+    const featureId = req.params.id;
+    const { reason } = req.body;
+    if (!featureId) return res.status(400).json({ message: "feature id required" });
+    const reporterId = req.user?.id || req.headers["x-user-id"];
+    if (!reporterId) return res.status(401).json({ message: "user header required" });
+
+    const doc = await FeatureRequest.findById(featureId);
+    if (!doc) return res.status(404).json({ message: "Feature not found" });
+
+    doc.reports.push({
+      reporterId,
+      reason: reason || "no reason provided",
+      createdAt: new Date()
     });
 
     await doc.save();
-    return res.status(201).json(doc);
+    return res.json({ ok: true, featureId: doc._id, reportsCount: doc.reports.length });
   } catch (err) {
-    next(err);
-  }
-};
-
-export const getRequests = async (req, res, next) => {
-  try {
-    // basic filter + pagination + sort
-    const { board, status, q, page = 1, limit = 20, sort = "-votes" } = req.query;
-    const filter = {};
-    if (board) filter.board = board;
-    if (status) filter.status = status;
-    if (q) filter.title = { $regex: q, $options: "i" };
-
-    const skip = (Math.max(parseInt(page), 1) - 1) * parseInt(limit);
-    const requests = await FeatureRequest.find(filter)
-      .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await FeatureRequest.countDocuments(filter);
-    res.json({ data: requests, total });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const getRequestById = async (req, res, next) => {
-  try {
-    const doc = await FeatureRequest.findById(req.params.id);
-    if (!doc) return res.status(404).json({ message: "Not found" });
-    res.json(doc);
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const updateRequest = async (req, res, next) => {
-  try {
-    const updates = req.body || {};
-    // optional: handle new files appended
-    if (req.files && req.files.length) {
-      const newFiles = req.files.map((f) => ({
-        filename: f.filename,
-        originalName: f.originalname,
-        mimetype: f.mimetype,
-        size: f.size,
-        url: `${req.protocol}://${req.get("host")}/uploads/${f.filename}`,
-      }));
-      updates.$push = { attachments: { $each: newFiles } };
-    }
-    const doc = await FeatureRequest.findByIdAndUpdate(req.params.id, updates, { new: true });
-    if (!doc) return res.status(404).json({ message: "Not found" });
-    res.json(doc);
-  } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
 export const deleteRequest = async (req, res, next) => {
   try {
-    const doc = await FeatureRequest.findByIdAndDelete(req.params.id);
-    if (!doc) return res.status(404).json({ message: "Not found" });
-    // Note: file deletion is not handled here. Add fs.unlink if you want to remove files from disk.
-    res.json({ message: "Deleted" });
+    const featureId = req.params.id;
+    const userId = req.user?.id || req.headers["x-user-id"];
+    if (!userId) return res.status(401).json({ message: "user header required" });
+
+    const doc = await FeatureRequest.findById(featureId);
+    if (!doc) return res.status(404).json({ message: "Feature not found" });
+
+    // only author can soft-delete
+    if (doc.authorId !== userId) return res.status(403).json({ message: "Not allowed" });
+
+    doc.isDeleted = true;
+    doc.deletedAt = new Date();
+    doc.deletedBy = userId;
+    await doc.save();
+
+    return res.json({ ok: true, id: doc._id });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
-export const voteRequest = async (req, res, next) => {
+// get features the current user reported
+export const getMyReportedFeatures = async (req, res, next) => {
   try {
-    const { action = "up" } = req.body; // action: 'up' or 'down'
-    const inc = action === "down" ? -1 : 1;
-    const doc = await FeatureRequest.findByIdAndUpdate(req.params.id, { $inc: { votes: inc } }, { new: true });
-    if (!doc) return res.status(404).json({ message: "Not found" });
-    res.json(doc);
+    const userId = req.user?.id || req.headers["x-user-id"];
+    if (!userId) return res.status(401).json({ message: "user header required" });
+
+    const data = await FeatureRequest.find({ "reports.reporterId": userId }).sort({ updatedAt: -1 });
+    return res.json(data);
   } catch (err) {
-    next(err);
+    return next(err);
   }
+};
+
+export default {
+  createRequest,
+  listRequests,
+  getRequest,
+  getMyRequests,
+  reportRequest,
+  deleteRequest,
+  getMyReportedFeatures
 };

@@ -1,37 +1,29 @@
+// backend/middleware/upload.js
 import multer from "multer";
 import path from "path";
+import crypto from "crypto";
 import fs from "fs";
 
-const uploadFolder = path.join(process.cwd(), "uploads");
-
-// ensure uploads folder exists
-if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder, { recursive: true });
+const uploadDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadFolder);
-  },
+  destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const baseName = path.basename(file.originalname, ext).replace(/\s+/g, "-");
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${baseName}-${unique}${ext}`);
+    const name = crypto.randomBytes(6).toString("hex") + "-" + Date.now();
+    cb(null, `${name}${ext}`);
   },
 });
 
-function fileFilter(req, file, cb) {
-  // optional: only allow images or pdfs
-  const allowed = /jpeg|jpg|png|gif|webp|bmp|pdf/;
-  const mimetypeOk = allowed.test(file.mimetype);
-  const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
-  if (mimetypeOk && extOk) cb(null, true);
-  else cb(new Error("Only images and pdfs are allowed"));
-}
+const fileFilter = (req, file, cb) => {
+  // accept images + pdfs by default (adjust if needed)
+  if (/image|pdf/.test(file.mimetype)) cb(null, true);
+  else cb(null, false);
+};
 
-const maxSize = process.env.MAX_FILE_SIZE ? parseInt(process.env.MAX_FILE_SIZE) : 25 * 1024 * 1024;
+const limits = { fileSize: parseInt(process.env.MAX_FILE_SIZE || "5000000", 10) }; // 5MB default
 
-export const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: maxSize },
-});
+const upload = multer({ storage, fileFilter, limits });
+
+export default upload;

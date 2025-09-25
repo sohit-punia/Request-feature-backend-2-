@@ -1,46 +1,39 @@
+// backend/server.js
 import express from "express";
-import dotenv from "dotenv";
-import morgan from "morgan";
-import cors from "cors";
 import path from "path";
-import requestRoutes from "./routes/requestRoutes.js";
+import dotenv from "dotenv";
 import connectDB from "./config/db.js";
-import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
+import requestRoutes from "./routes/requestRoutes.js";
 import commentRoutes from "./routes/commentRoutes.js";
+import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
 
 dotenv.config();
-
-const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) {
-  console.error("Please set MONGO_URI in .env");
-  process.exit(1);
-}
-
-connectDB(MONGO_URI);
+connectDB(process.env.MONGO_URI);
 
 const app = express();
 
-// allow form-data + json
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// serve uploads statically
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use((req, res, next) => {
+  console.log(">>> INCOMING:", req.method, req.originalUrl,
+    "content-type:", req.header("content-type"),
+    "x-user-id:", req.header("x-user-id"));
+  next();
+});
+
+// mount routes BEFORE notFound/error
+app.use("/api/requests", requestRoutes);
 app.use("/api", commentRoutes);
 
-app.use(cors());
-app.use(morgan("dev"));
+// root
+app.get("/", (req, res) => res.send("API running"));
 
-// Serve uploads folder statically so attachments are accessible through URL
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-
-// API
-app.use("/api/requests", requestRoutes);
-
-app.get("/", (req, res) => res.send("API is running"));
-
-// Error handlers
+// error handlers (after routes)
 app.use(notFound);
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const port = process.env.PORT || 5001;
+app.listen(port, () => console.log(`Server running on port ${port}`));

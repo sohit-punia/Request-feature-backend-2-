@@ -17,7 +17,7 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  // accept images + pdfs by default (adjust if needed)
+  // accept all  images + pdfs by default (adjust if needed)
   if (/image|pdf/.test(file.mimetype)) cb(null, true);
   else cb(null, false);
 };

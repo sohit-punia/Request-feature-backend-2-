@@ -37,7 +37,9 @@ export const createComment = async (req, res, next) => {
 
     await comment.save();
 
-    // Optionally: update feature metadata (e.g. comments count or last activity)
+
+          // Optionally: update feature metadata (e.g. comments count or last activity)
+          
     try {
       await FeatureRequest.findByIdAndUpdate(featureId, {
         $inc: { commentsCount: 1 },                 // if you track a count

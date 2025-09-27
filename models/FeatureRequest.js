@@ -9,6 +9,7 @@ const AttachmentSchema = new mongoose.Schema({
   url: String
 }, { _id: false });
 
+
 const FeatureRequestSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: String,
